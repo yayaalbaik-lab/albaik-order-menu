@@ -375,6 +375,10 @@
       .items-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
     }
   </style>
+
+<style>
+.countdown-wrap{display:grid;place-items:center;text-align:center;padding:12px 0 4px}.countdown-circle{width:86px;height:86px;border-radius:50%;display:grid;place-items:center;background:var(--yellow);color:var(--black);font-size:2.2rem;font-weight:900;margin-bottom:14px;box-shadow:0 8px 30px rgba(255,193,7,.25)}.countdown-text{color:var(--text-light);line-height:1.8;font-weight:700}.countdown-subtext{color:var(--text-muted);font-size:.9rem;line-height:1.7;margin-top:8px}
+</style>
 </head>
 <body>
 
@@ -712,6 +716,7 @@ renderMenu();
 <button class="cart-bar" id="cartBar" onclick="openCart()"><strong id="cartBarLabel">السلة</strong><span id="cartBarTotal">0.00 د.أ</span></button>
 <div class="order-modal" id="cartModal" onclick="closeOrderBackdrop(event,'cartModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="cartTitle">السلة</h3><button class="icon-btn" onclick="closeOrderModal('cartModal')">×</button></div><div class="order-body"><div id="cartItems"></div><div class="cart-total"><span id="cartTotalLabel">المجموع</span><span id="cartTotalValue">0.00 د.أ</span></div><div class="order-actions"><button class="secondary-btn" onclick="closeOrderModal('cartModal')" id="continueBtn">متابعة الطلب</button><button class="primary-btn" onclick="openReview()" id="reviewBtn">مراجعة الطلب</button></div></div></div></div>
 <div class="order-modal" id="reviewModal" onclick="closeOrderBackdrop(event,'reviewModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="reviewTitle">مراجعة الطلب</h3><button class="icon-btn" onclick="closeOrderModal('reviewModal')">×</button></div><div class="order-body"><div class="error-text" id="orderError"></div><div class="order-field"><label id="customerNameLabel" for="customerName">الاسم</label><input class="order-input" id="customerName" maxlength="40" autocomplete="name"></div><div class="order-field"><label id="customerNoteLabel" for="customerNote">ملاحظات عامة</label><textarea class="order-textarea" id="customerNote" maxlength="160"></textarea></div><div class="review-list" id="reviewItems"></div><div class="cart-total"><span id="reviewTotalLabel">المجموع</span><span id="reviewTotalValue">0.00 د.أ</span></div><div class="order-actions"><button class="secondary-btn" onclick="openCart()" id="backToCartBtn">رجوع للسلة</button><button class="primary-btn" onclick="submitOrder()" id="submitOrderBtn">تأكيد وإرسال الطلب</button></div></div></div></div>
+<div class="order-modal" id="confirmModal" onclick="closeOrderBackdrop(event,'confirmModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="confirmTitle">????? ?????</h3><button class="icon-btn" onclick="cancelConfirmOrder()">?</button></div><div class="order-body"><div class="countdown-wrap"><div class="countdown-circle" id="confirmCountdown">6</div><div class="countdown-text" id="confirmText">???? ????? ????? ???????? ???? 6 ?????</div><div class="countdown-subtext" id="confirmSubtext">????? ????? ????? ???? ?? ?????? ??? ???????.</div></div><div class="order-actions"><button class="secondary-btn" onclick="cancelConfirmOrder()" id="cancelConfirmBtn">????? ?????</button><button class="primary-btn" onclick="confirmOrderNow()" id="confirmNowBtn">????? ????</button></div></div></div></div>
 <div class="order-modal" id="successModal"><div class="order-card"><div class="order-body success-box"><div class="success-mark">✓</div><h3 id="successTitle">تم استلام طلبك بنجاح</h3><p id="successDetails" style="color:var(--text-muted);margin-top:10px;line-height:1.8"></p><div class="order-actions"><button class="primary-btn" onclick="closeOrderModal('successModal')" id="successCloseBtn">تم</button></div></div></div></div>
 <script>
 (function(){
@@ -719,6 +724,9 @@ renderMenu();
   var MAX_ITEM_QTY = 9;
   var cart = new Map();
   var productCatalog = new Map();
+  var pendingOrderPayload = null;
+  var confirmCountdownTimer = null;
+  var confirmSecondsLeft = 6;
 
   function prepareMenuData(){
     menuData.forEach(function(section){
@@ -801,24 +809,76 @@ renderMenu();
   function showErr(msg){var el=document.getElementById('orderError');el.textContent=msg;el.classList.add('show');}
   function clearErr(){var el=document.getElementById('orderError');el.textContent='';el.classList.remove('show');}
 
-  window.submitOrder=async function(){
-    clearErr(); var es=entries(); var customerName=document.getElementById('customerName').value.trim(); var customerNote=document.getElementById('customerNote').value.trim(); var btn=document.getElementById('submitOrderBtn');
-    if(!es.length) return showErr(currentLang === 'ar' ? 'السلة فارغة.' : 'Your cart is empty.');
-    if(!customerName) return showErr(currentLang === 'ar' ? 'يرجى كتابة الاسم.' : 'Please enter your name.');
-    var payload={customer_name:customerName,customer_note:customerNote,language:currentLang,items:es.map(function(e){return {product_id:e.productId,quantity:e.quantity,item_note:String(e.note||'').trim()};})};
-    btn.disabled=true; btn.textContent=currentLang === 'ar' ? 'جار الإرسال...' : 'Sending...';
+  window.submitOrder=function(){
+    clearErr(); var es=entries(); var customerName=document.getElementById('customerName').value.trim(); var customerNote=document.getElementById('customerNote').value.trim();
+    if(!es.length) return showErr(currentLang === 'ar' ? '????? ?????.' : 'Your cart is empty.');
+    if(!customerName) return showErr(currentLang === 'ar' ? '???? ????? ?????.' : 'Please enter your name.');
+    pendingOrderPayload={customer_name:customerName,customer_note:customerNote,language:currentLang,items:es.map(function(e){return {product_id:e.productId,quantity:e.quantity,item_note:String(e.note||'').trim()};})};
+    renderConfirmModal();
+    openOrderModal('confirmModal');
+    startConfirmCountdown();
+  };
+
+  function renderConfirmModal(){
+    setText('confirmTitle', currentLang === 'ar' ? "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0637\u0644\u0628" : 'Confirm order');
+    setText('confirmText', currentLang === 'ar' ? "\u0633\u064A\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u062E\u0644\u0627\u0644 6 \u062B\u0648\u0627\u0646\u064D" : 'The order will be confirmed automatically in 6 seconds');
+    setText('confirmSubtext', currentLang === 'ar' ? "\u064A\u0645\u0643\u0646\u0643 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u0622\u0646 \u0623\u0648 \u0625\u0644\u063A\u0627\u0621\u0647 \u0642\u0628\u0644 \u0627\u0644\u0625\u0631\u0633\u0627\u0644." : 'You can confirm now or cancel before it is sent.');
+    setText('cancelConfirmBtn', currentLang === 'ar' ? "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0637\u0644\u0628" : 'Cancel order');
+    setText('confirmNowBtn', currentLang === 'ar' ? "\u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0622\u0646" : 'Confirm now');
+    setText('confirmCountdown', '6');
+  }
+
+  function startConfirmCountdown(){
+    clearConfirmCountdown();
+    confirmSecondsLeft = 6;
+    updateConfirmCountdown();
+    confirmCountdownTimer = setInterval(function(){
+      confirmSecondsLeft -= 1;
+      updateConfirmCountdown();
+      if(confirmSecondsLeft <= 0) confirmOrderNow();
+    }, 1000);
+  }
+
+  function updateConfirmCountdown(){
+    setText('confirmCountdown', String(Math.max(confirmSecondsLeft, 0)));
+    setText('confirmText', currentLang === 'ar' ? "\u0633\u064A\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u062E\u0644\u0627\u0644 "+Math.max(confirmSecondsLeft, 0)+" \u062B\u0648\u0627\u0646\u064D" : 'The order will be confirmed automatically in '+Math.max(confirmSecondsLeft, 0)+' seconds');
+  }
+
+  function clearConfirmCountdown(){
+    if(confirmCountdownTimer){ clearInterval(confirmCountdownTimer); confirmCountdownTimer = null; }
+  }
+
+  window.cancelConfirmOrder=function(){
+    clearConfirmCountdown();
+    pendingOrderPayload = null;
+    closeOrderModal('confirmModal');
+    openOrderModal('reviewModal');
+  };
+
+  window.confirmOrderNow=async function(){
+    clearConfirmCountdown();
+    if(!pendingOrderPayload) return;
+    var payload = pendingOrderPayload;
+    pendingOrderPayload = null;
+    await sendOrderPayload(payload);
+  };
+
+  async function sendOrderPayload(payload){
+    var btn=document.getElementById('confirmNowBtn');
+    btn.disabled=true; btn.textContent=currentLang === 'ar' ? "\u062C\u0627\u0631 \u0627\u0644\u0625\u0631\u0633\u0627\u0644..." : 'Sending...';
     try{
       var result;
       if(ORDER_ENDPOINT){var response=await fetch(ORDER_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify(payload)});result=await response.json().catch(function(){return {};});if(!response.ok) throw new Error(result.message || 'ORDER_FAILED');}
       else{console.log('Order payload for Worker:',payload);result={order_number:'DEMO-'+Date.now().toString().slice(-5),total:totals().total};}
-      var orderNumber=result.order_number || 'DEMO'; var total=Number(result.total == null ? totals().total : result.total);
-      cart.clear(); renderCart(); closeOrderModal('reviewModal');
-      setText('successTitle', currentLang === 'ar' ? 'تم استلام طلبك بنجاح' : 'Your order was received');
-      document.getElementById('successDetails').innerHTML=currentLang === 'ar' ? 'تم إرسال طلبك إلى الكاش.<br>المجموع: '+price(total)+' '+cur()+'<br>يرجى مراجعة الكاش للتأكيد والدفع.' : 'Your order was sent to the cashier.<br>Total: '+price(total)+' '+cur()+'<br>Please check with the cashier to confirm and pay.';
-      setText('successCloseBtn', currentLang === 'ar' ? 'تم' : 'Done'); openOrderModal('successModal');
-    }catch(error){showErr(error.message === 'RATE_LIMITED' ? (currentLang === 'ar' ? 'تم إرسال عدة طلبات من هذا الجهاز خلال وقت قصير. يرجى مراجعة الكاش لإكمال الطلب.' : 'Several orders were sent from this device recently. Please check with the cashier.') : (currentLang === 'ar' ? 'تعذر إرسال الطلب. حاول مرة أخرى.' : 'Could not send the order. Please try again.'));}
-    finally{btn.disabled=false;btn.textContent=currentLang === 'ar' ? 'تأكيد وإرسال الطلب' : 'Confirm and send';}
+      var total=Number(result.total == null ? totals().total : result.total);
+      cart.clear(); renderCart(); closeOrderModal('confirmModal'); closeOrderModal('reviewModal');
+      setText('successTitle', currentLang === 'ar' ? '?? ?????? ???? ?????' : 'Your order was received');
+      document.getElementById('successDetails').innerHTML=currentLang === 'ar' ? '?? ????? ???? ??? ?????.<br>???????: '+price(total)+' '+cur()+'<br>???? ?????? ????? ??????? ??????.' : 'Your order was sent to the cashier.<br>Total: '+price(total)+' '+cur()+'<br>Please check with the cashier to confirm and pay.';
+      setText('successCloseBtn', currentLang === 'ar' ? '??' : 'Done'); openOrderModal('successModal');
+    }catch(error){closeOrderModal('confirmModal'); openOrderModal('reviewModal'); showErr(error.message === 'RATE_LIMITED' ? (currentLang === 'ar' ? '?? ????? ??? ????? ?? ??? ?????? ???? ??? ????. ???? ?????? ????? ?????? ?????.' : 'Several orders were sent from this device recently. Please check with the cashier.') : (currentLang === 'ar' ? '???? ????? ?????. ???? ??? ????.' : 'Could not send the order. Please try again.'));}
+    finally{btn.disabled=false;btn.textContent=currentLang === 'ar' ? "\u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0622\u0646" : 'Confirm now';}
   };
+
 
   var oldToggleLang = window.toggleLang;
   window.toggleLang=function(){oldToggleLang();renderCart();};
