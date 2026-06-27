@@ -716,7 +716,7 @@ renderMenu();
 <button class="cart-bar" id="cartBar" onclick="openCart()"><strong id="cartBarLabel">السلة</strong><span id="cartBarTotal">0.00 د.أ</span></button>
 <div class="order-modal" id="cartModal" onclick="closeOrderBackdrop(event,'cartModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="cartTitle">السلة</h3><button class="icon-btn" onclick="closeOrderModal('cartModal')">×</button></div><div class="order-body"><div id="cartItems"></div><div class="cart-total"><span id="cartTotalLabel">المجموع</span><span id="cartTotalValue">0.00 د.أ</span></div><div class="order-actions"><button class="secondary-btn" onclick="closeOrderModal('cartModal')" id="continueBtn">متابعة الطلب</button><button class="primary-btn" onclick="openReview()" id="reviewBtn">مراجعة الطلب</button></div></div></div></div>
 <div class="order-modal" id="reviewModal" onclick="closeOrderBackdrop(event,'reviewModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="reviewTitle">مراجعة الطلب</h3><button class="icon-btn" onclick="closeOrderModal('reviewModal')">×</button></div><div class="order-body"><div class="error-text" id="orderError"></div><div class="order-field"><label id="customerNameLabel" for="customerName">الاسم</label><input class="order-input" id="customerName" maxlength="40" autocomplete="name"></div><div class="order-field"><label id="customerNoteLabel" for="customerNote">ملاحظات عامة</label><textarea class="order-textarea" id="customerNote" maxlength="160"></textarea></div><div class="review-list" id="reviewItems"></div><div class="cart-total"><span id="reviewTotalLabel">المجموع</span><span id="reviewTotalValue">0.00 د.أ</span></div><div class="order-actions"><button class="secondary-btn" onclick="openCart()" id="backToCartBtn">رجوع للسلة</button><button class="primary-btn" onclick="submitOrder()" id="submitOrderBtn">تأكيد وإرسال الطلب</button></div></div></div></div>
-<div class="order-modal" id="confirmModal" onclick="closeOrderBackdrop(event,'confirmModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="confirmTitle">????? ?????</h3><button class="icon-btn" onclick="cancelConfirmOrder()">?</button></div><div class="order-body"><div class="countdown-wrap"><div class="countdown-circle" id="confirmCountdown">6</div><div class="countdown-text" id="confirmText">???? ????? ????? ???????? ???? 6 ?????</div><div class="countdown-subtext" id="confirmSubtext">????? ????? ????? ???? ?? ?????? ??? ???????.</div></div><div class="order-actions"><button class="secondary-btn" onclick="cancelConfirmOrder()" id="cancelConfirmBtn">????? ?????</button><button class="primary-btn" onclick="confirmOrderNow()" id="confirmNowBtn">????? ????</button></div></div></div></div>
+<div class="order-modal" id="confirmModal" onclick="closeOrderBackdrop(event,'confirmModal')"><div class="order-card" onclick="event.stopPropagation()"><div class="order-head"><h3 id="confirmTitle">????? ?????</h3><button class="icon-btn" onclick="cancelConfirmOrder()">?</button></div><div class="order-body"><div class="countdown-wrap"><div class="countdown-circle" id="confirmCountdown">8</div><div class="countdown-text" id="confirmText">???? ????? ????? ???????? ???? 6 ?????</div><div class="countdown-subtext" id="confirmSubtext">????? ????? ????? ???? ?? ?????? ??? ???????.</div></div><div class="order-actions"><button class="secondary-btn" onclick="cancelConfirmOrder()" id="cancelConfirmBtn">????? ?????</button><button class="primary-btn" onclick="confirmOrderNow()" id="confirmNowBtn">????? ????</button></div></div></div></div>
 <div class="order-modal" id="successModal"><div class="order-card"><div class="order-body success-box"><div class="success-mark">✓</div><h3 id="successTitle">تم استلام طلبك بنجاح</h3><p id="successDetails" style="color:var(--text-muted);margin-top:10px;line-height:1.8"></p><div class="order-actions"><button class="primary-btn" onclick="closeOrderModal('successModal')" id="successCloseBtn">تم</button></div></div></div></div>
 <script>
 (function(){
@@ -726,7 +726,7 @@ renderMenu();
   var productCatalog = new Map();
   var pendingOrderPayload = null;
   var confirmCountdownTimer = null;
-  var confirmSecondsLeft = 6;
+  var confirmSecondsLeft = 8;
 
   function prepareMenuData(){
     menuData.forEach(function(section){
@@ -821,16 +821,16 @@ renderMenu();
 
   function renderConfirmModal(){
     setText('confirmTitle', currentLang === 'ar' ? "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0637\u0644\u0628" : 'Confirm order');
-    setText('confirmText', currentLang === 'ar' ? "\u0633\u064A\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u062E\u0644\u0627\u0644 6 \u062B\u0648\u0627\u0646\u064D" : 'The order will be confirmed automatically in 6 seconds');
+    setText('confirmText', currentLang === 'ar' ? "\u0633\u064A\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u062E\u0644\u0627\u0644 8 \u062B\u0648\u0627\u0646\u064D" : 'The order will be confirmed automatically in 8 seconds');
     setText('confirmSubtext', currentLang === 'ar' ? "\u064A\u0645\u0643\u0646\u0643 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u0622\u0646 \u0623\u0648 \u0625\u0644\u063A\u0627\u0621\u0647 \u0642\u0628\u0644 \u0627\u0644\u0625\u0631\u0633\u0627\u0644." : 'You can confirm now or cancel before it is sent.');
     setText('cancelConfirmBtn', currentLang === 'ar' ? "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0637\u0644\u0628" : 'Cancel order');
     setText('confirmNowBtn', currentLang === 'ar' ? "\u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0622\u0646" : 'Confirm now');
-    setText('confirmCountdown', '6');
+    setText('confirmCountdown', '8');
   }
 
   function startConfirmCountdown(){
     clearConfirmCountdown();
-    confirmSecondsLeft = 6;
+    confirmSecondsLeft = 8;
     updateConfirmCountdown();
     confirmCountdownTimer = setInterval(function(){
       confirmSecondsLeft -= 1;
@@ -891,6 +891,7 @@ renderMenu();
 
 </body>
 </html>
+
 
 
 
