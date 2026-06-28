@@ -283,8 +283,14 @@ export default {
         return jsonResponse({ message: "Telegram is not configured" }, 500, corsHeaders);
       }
 
+      const contentLength = Number(request.headers.get("content-length") || 0);
+      if (contentLength > 20_000) {
+        return jsonResponse({ message: "Request is too large" }, 413, corsHeaders);
+      }
+
       const body = await request.json();
       const order = normalizeOrder(body);
+      await enforceRateLimit(request, env, order.device_token);
       const pricedOrder = priceOrder(order);
       const orderNumber = createDemoOrderNumber();
       const message = formatTelegramMessage(orderNumber, pricedOrder);
@@ -324,18 +330,30 @@ export default {
         corsHeaders
       );
     } catch (error) {
+      if (error.code === "RATE_LIMITED") {
+        return jsonResponse(
+          { message: "RATE_LIMITED" },
+          429,
+          { ...corsHeaders, "Retry-After": String(RATE_LIMIT_WINDOW_SECONDS) }
+        );
+      }
+
       return jsonResponse(
         { message: error.message || "Invalid order" },
-        400,
+        error.status || 400,
         corsHeaders
       );
     }
   },
 };
 
+const RATE_LIMIT_MAX_ORDERS = 2;
+const RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
+
 function normalizeOrder(body) {
   const customerName = cleanText(body.customer_name, 40);
   const customerNote = cleanText(body.customer_note || "", 160);
+  const deviceToken = cleanText(body.device_token || "", 80);
   const language = body.language === "en" ? "en" : "ar";
 
   if (!customerName) {
@@ -363,7 +381,49 @@ function normalizeOrder(body) {
     return { product_id: productId, quantity, item_note: itemNote };
   });
 
-  return { customer_name: customerName, customer_note: customerNote, language, items };
+  return { customer_name: customerName, customer_note: customerNote, device_token: deviceToken, language, items };
+}
+
+async function enforceRateLimit(request, env, deviceToken) {
+  if (!env.ORDER_RATE_LIMIT_KV) {
+    const error = new Error("Rate limit storage is not configured");
+    error.status = 500;
+    throw error;
+  }
+
+  const ip =
+    request.headers.get("CF-Connecting-IP") ||
+    request.headers.get("X-Forwarded-For") ||
+    "unknown-ip";
+  const userAgent = request.headers.get("User-Agent") || "unknown-agent";
+  const identityHash = await sha256([ip, userAgent, deviceToken || "no-device-token"].join("|"));
+  const key = "orders:" + identityHash;
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_SECONDS * 1000;
+
+  const existing = await env.ORDER_RATE_LIMIT_KV.get(key, { type: "json" }).catch(() => null);
+  const recentOrders = Array.isArray(existing)
+    ? existing.filter((timestamp) => Number(timestamp) >= windowStart)
+    : [];
+
+  if (recentOrders.length >= RATE_LIMIT_MAX_ORDERS) {
+    const error = new Error("RATE_LIMITED");
+    error.code = "RATE_LIMITED";
+    throw error;
+  }
+
+  recentOrders.push(now);
+  await env.ORDER_RATE_LIMIT_KV.put(key, JSON.stringify(recentOrders), {
+    expirationTtl: RATE_LIMIT_WINDOW_SECONDS,
+  });
+}
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function priceOrder(order) {
