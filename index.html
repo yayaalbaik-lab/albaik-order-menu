@@ -870,6 +870,13 @@ renderMenu();
     if(confirmCountdownTimer){ clearInterval(confirmCountdownTimer); confirmCountdownTimer = null; }
   }
 
+  function clearOrderFields(){
+    document.getElementById('customerName').value = '';
+    document.getElementById('customerNote').value = '';
+    document.querySelectorAll('.note-input').forEach(function(input){ input.value = ''; });
+    clearErr();
+  }
+
   window.cancelConfirmOrder=function(){
     if(isSubmittingOrder) return;
     clearConfirmCountdown();
@@ -899,7 +906,7 @@ renderMenu();
       if(ORDER_ENDPOINT){var response=await fetch(ORDER_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify(payload)});result=await response.json().catch(function(){return {};});if(!response.ok) throw new Error(result.message || 'ORDER_FAILED');}
       else{console.log('Order payload for Worker:',payload);result={order_number:'DEMO-'+Date.now().toString().slice(-5),total:totals().total};}
       var total=Number(result.total == null ? totals().total : result.total);
-      cart.clear(); renderCart(); closeOrderModal('confirmModal'); closeOrderModal('reviewModal');
+      cart.clear(); clearOrderFields(); renderCart(); closeOrderModal('confirmModal'); closeOrderModal('reviewModal');
       setText('successTitle', currentLang === 'ar' ? "\u062A\u0645 \u0627\u0633\u062A\u0644\u0627\u0645 \u0637\u0644\u0628\u0643 \u0628\u0646\u062C\u0627\u062D" : 'Your order was received');
       document.getElementById('successDetails').innerHTML=currentLang === 'ar' ? "\u062A\u0645 \u0625\u0631\u0633\u0627\u0644 \u0637\u0644\u0628\u0643 \u0625\u0644\u0649 \u0627\u0644\u0643\u0627\u0634."+'<br>'+"\u0627\u0644\u0645\u062C\u0645\u0648\u0639"+': '+price(total)+' '+cur()+'<br>'+"\u064A\u0631\u062C\u0649 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0643\u0627\u0634 \u0644\u0644\u062A\u0623\u0643\u064A\u062F \u0648\u0627\u0644\u062F\u0641\u0639." : 'Your order was sent to the cashier.<br>Total: '+price(total)+' '+cur()+'<br>Please check with the cashier to confirm and pay.';
       setText('successCloseBtn', currentLang === 'ar' ? "\u062A\u0645" : 'Done'); openOrderModal('successModal');
