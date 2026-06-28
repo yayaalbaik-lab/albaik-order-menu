@@ -374,7 +374,7 @@ function normalizeOrder(body) {
     const itemNote = cleanText(item.item_note || "", 120);
 
     if (!productId) throw new Error("Invalid product");
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
       throw new Error("Invalid quantity");
     }
 
