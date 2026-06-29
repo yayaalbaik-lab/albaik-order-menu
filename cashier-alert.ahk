@@ -7,7 +7,7 @@
 WorkerUrl := "https://albaik-worker.yayaalbaik.workers.dev"
 CashierPageUrl := "https://yayaalbaik-lab.github.io/albaik-order-menu/cashier.html"
 AlertSoundPath := A_ScriptDir . "\cashier-order-alert.wav"
-PollMs := 2000
+PollMs := 1000
 AlarmActive := false
 
 secretBox := InputBox("Enter CASHIER_SECRET:", "Albaik Orders", "Password w360 h140")
