@@ -263,18 +263,22 @@
 
 export default {
   async fetch(request, env) {
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Max-Age": "86400",
-    };
+    const corsHeaders = createCorsHeaders(request, env);
+    const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    if (request.method !== "POST") {
+    if (url.pathname === "/cashier/orders" && request.method === "GET") {
+      return handleCashierOrders(request, env, corsHeaders);
+    }
+
+    if (url.pathname === "/cashier/accept" && request.method === "POST") {
+      return handleCashierAccept(request, env, corsHeaders);
+    }
+
+    if (url.pathname !== "/" || request.method !== "POST") {
       return jsonResponse({ message: "Method not allowed" }, 405, corsHeaders);
     }
 
@@ -293,7 +297,9 @@ export default {
       await enforceRateLimit(request, env, order.device_token);
       const pricedOrder = priceOrder(order);
       const orderNumber = createDemoOrderNumber();
+      await saveCashierOrder(env, orderNumber, pricedOrder);
       const message = formatTelegramMessage(orderNumber, pricedOrder);
+      let telegramStatus = "sent_to_telegram";
 
       const telegramResponse = await fetch(
         `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -312,11 +318,7 @@ export default {
       const telegramResult = await telegramResponse.json().catch(() => ({}));
 
       if (!telegramResponse.ok || telegramResult.ok === false) {
-        return jsonResponse(
-          { message: "Telegram send failed", details: telegramResult.description || "Unknown error" },
-          502,
-          corsHeaders
-        );
+        telegramStatus = "telegram_failed";
       }
 
       return jsonResponse(
@@ -324,7 +326,7 @@ export default {
           ok: true,
           order_number: orderNumber,
           total: pricedOrder.total,
-          telegram_status: "sent_to_telegram",
+          telegram_status: telegramStatus,
         },
         200,
         corsHeaders
@@ -349,6 +351,27 @@ export default {
 
 const RATE_LIMIT_MAX_ORDERS = 2;
 const RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
+const CASHIER_ORDER_TTL_SECONDS = 24 * 60 * 60;
+
+function createCorsHeaders(request, env) {
+  const requestOrigin = request.headers.get("Origin") || "";
+  const configuredOrigins = cleanText(env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || "", 500)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const allowOrigin = configuredOrigins.length === 0
+    ? "*"
+    : configuredOrigins.includes(requestOrigin)
+      ? requestOrigin
+      : configuredOrigins[0];
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+  };
+}
 
 function normalizeOrder(body) {
   const customerName = cleanText(body.customer_name, 40);
@@ -416,6 +439,115 @@ async function enforceRateLimit(request, env, deviceToken) {
   await env.ORDER_RATE_LIMIT_KV.put(key, JSON.stringify(recentOrders), {
     expirationTtl: RATE_LIMIT_WINDOW_SECONDS,
   });
+}
+
+async function handleCashierOrders(request, env, corsHeaders) {
+  try {
+    requireCashierAccess(request, env);
+    const store = getOrderStore(env);
+    const list = await store.list({ prefix: "cashier:order:" });
+    const orders = [];
+
+    for (const key of list.keys) {
+      const order = await store.get(key.name, { type: "json" }).catch(() => null);
+      if (order && order.status === "new") {
+        orders.push(publicCashierOrder(order));
+      }
+    }
+
+    orders.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return jsonResponse({ ok: true, orders }, 200, corsHeaders);
+  } catch (error) {
+    return jsonResponse({ message: error.message || "Unauthorized" }, error.status || 401, corsHeaders);
+  }
+}
+
+async function handleCashierAccept(request, env, corsHeaders) {
+  try {
+    requireCashierAccess(request, env);
+    const body = await request.json().catch(() => ({}));
+    const orderId = cleanText(body.order_id, 80);
+    if (!orderId) {
+      return jsonResponse({ message: "Missing order id" }, 400, corsHeaders);
+    }
+
+    const store = getOrderStore(env);
+    const key = "cashier:order:" + orderId;
+    const order = await store.get(key, { type: "json" }).catch(() => null);
+    if (!order) {
+      return jsonResponse({ message: "Order not found" }, 404, corsHeaders);
+    }
+
+    order.status = "accepted";
+    order.accepted_at = new Date().toISOString();
+    await store.put(key, JSON.stringify(order), { expirationTtl: CASHIER_ORDER_TTL_SECONDS });
+
+    return jsonResponse({ ok: true, order_id: orderId }, 200, corsHeaders);
+  } catch (error) {
+    return jsonResponse({ message: error.message || "Unauthorized" }, error.status || 401, corsHeaders);
+  }
+}
+
+async function saveCashierOrder(env, orderNumber, order) {
+  const store = getOrderStore(env);
+  const createdAt = new Date().toISOString();
+  const cashierOrder = {
+    id: orderNumber,
+    status: "new",
+    created_at: createdAt,
+    customer_name: order.customer_name,
+    customer_note: order.customer_note,
+    total: order.total,
+    items: order.items.map((item) => ({
+      product_id: item.product_id,
+      quantity: item.quantity,
+      item_note: item.item_note,
+      name_ar: item.name_ar,
+      unit_price: item.unit_price,
+      line_total: item.line_total,
+    })),
+  };
+
+  await store.put("cashier:order:" + orderNumber, JSON.stringify(cashierOrder), {
+    expirationTtl: CASHIER_ORDER_TTL_SECONDS,
+  });
+}
+
+function publicCashierOrder(order) {
+  return {
+    id: order.id,
+    created_at: order.created_at,
+    customer_name: order.customer_name,
+    customer_note: order.customer_note,
+    total: order.total,
+    items: order.items,
+  };
+}
+
+function getOrderStore(env) {
+  const store = env.ORDER_STORE_KV || env.ORDER_RATE_LIMIT_KV;
+  if (!store) {
+    const error = new Error("Order storage is not configured");
+    error.status = 500;
+    throw error;
+  }
+  return store;
+}
+
+function requireCashierAccess(request, env) {
+  if (!env.CASHIER_SECRET) {
+    const error = new Error("Cashier access is not configured");
+    error.status = 500;
+    throw error;
+  }
+
+  const header = request.headers.get("Authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (token !== env.CASHIER_SECRET) {
+    const error = new Error("Unauthorized");
+    error.status = 401;
+    throw error;
+  }
 }
 
 async function sha256(value) {
