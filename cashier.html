@@ -324,7 +324,7 @@
       var secretKey = 'albaik_cashier_secret';
       var secret = '';
       var pollTimer = null;
-      var audioContext = null;
+      var alarmAudio = new Audio('cashier-order-alert.wav');
       var alarmTimer = null;
       var knownOrderIds = new Set();
 
@@ -355,32 +355,23 @@
         statusText.textContent = text;
       }
 
-      function ensureAudio(){
-        if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if(audioContext.state === 'suspended') audioContext.resume();
+      function prepareAudio(){
+        alarmAudio.preload = 'auto';
+        alarmAudio.load();
       }
 
-      function beep(){
-        if(!audioContext) return;
-        var osc = audioContext.createOscillator();
-        var gain = audioContext.createGain();
-        osc.type = 'square';
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.38);
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-        osc.start();
-        osc.stop(audioContext.currentTime + 0.42);
+      function playAlarmSound(){
+        alarmAudio.pause();
+        alarmAudio.currentTime = 0;
+        alarmAudio.play().catch(function(){});
       }
 
       function startAlarm(){
         alarmBanner.classList.add('show');
         document.title = 'طلب جديد - لوحة الكاش';
         if(alarmTimer) return;
-        beep();
-        alarmTimer = setInterval(beep, 1100);
+        playAlarmSound();
+        alarmTimer = setInterval(playAlarmSound, 2100);
       }
 
       function stopAlarm(){
@@ -390,6 +381,8 @@
           clearInterval(alarmTimer);
           alarmTimer = null;
         }
+        alarmAudio.pause();
+        alarmAudio.currentTime = 0;
       }
 
       function authHeaders(){
@@ -485,7 +478,7 @@
         try{
           var orders = await loadOrders();
           localStorage.setItem(secretKey, secret);
-          ensureAudio();
+          prepareAudio();
           setupPanel.classList.add('hidden');
           cashierPanel.classList.remove('hidden');
           setOnline(true, 'متصل');

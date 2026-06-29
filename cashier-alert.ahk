@@ -6,6 +6,7 @@
 
 WorkerUrl := "https://albaik-worker.yayaalbaik.workers.dev"
 CashierPageUrl := "https://yayaalbaik-lab.github.io/albaik-order-menu/cashier.html"
+AlertSoundPath := A_ScriptDir . "\cashier-order-alert.wav"
 PollMs := 2000
 AlarmActive := false
 
@@ -26,7 +27,11 @@ CheckOrders() {
       AlarmActive := true
       Run(CashierPageUrl)
     }
-    SoundBeep(880, 350)
+    if FileExist(AlertSoundPath) {
+      SoundPlay(AlertSoundPath)
+    } else {
+      SoundBeep(880, 350)
+    }
   } else {
     AlarmActive := false
   }
